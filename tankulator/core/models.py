@@ -9,6 +9,9 @@ class FishSpecies(models.Model):
     ph_max = models.FloatField(help_text="Maksymalne pH")
     min_tank_volume = models.PositiveIntegerField(help_text="Minimalny litraż [L]")
     bioload_index = models.FloatField(help_text="Współczynnik obciążenia biologicznego")
+    is_schooling = models.BooleanField(default=False)
+    adult_size = models.FloatField(default=5.0)
+    origin_region = models.CharField(max_length=100, blank=True)
     
     WATER_ZONE_CHOICES = [
         ('TOP', 'Tafle wody'),
@@ -16,7 +19,7 @@ class FishSpecies(models.Model):
         ('BTM', 'Przy dnie'),
     ]
     zone = models.CharField(max_length=3, choices=WATER_ZONE_CHOICES, default='MID')
-    aggression_level = models.IntegerField(default=1, help_text="Poziom agresji (1-5)")
+    aggression_level = models.IntegerField(default=1, help_text="Poziom agresji (1-3)")
 
     def __str__(self):
         return self.name

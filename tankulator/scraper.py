@@ -14,66 +14,116 @@ def get_numbers(text):
     """Wyciąga liczby z tekstu, np. '18 - 27°C' -> [18.0, 27.0]"""
     return [float(s) for s in re.findall(r"(\d+[\.,]?\d*)", text.replace(',', '.'))]
 
+def extract_latin_name(soup):
+    """Wyciąga nazwę łacińską z sekcji Podsumowanie"""
+    try:
+        summary_items = soup.find_all('li')
+        for item in summary_items:
+            text = item.get_text()
+            if 'Nazwa ryby akwariowej:' in text:
+                val_tag = item.find('b')
+                if val_tag:
+                    return val_tag.get_text().strip()
+    except:
+        pass
+    return ""
+
+def extract_hardness_from_summary(soup):
+    """Wyciąga twardość bezpośrednio z sekcji 'Podsumowanie'"""
+    try:
+        summary_items = soup.find_all('li')
+        for item in summary_items:
+            text = item.get_text().lower()
+            if 'twardość:' in text:
+                val_tag = item.find('b')
+                if val_tag:
+                    numbers = get_numbers(val_tag.get_text())
+                    if len(numbers) >= 2:
+                        return numbers[0], numbers[1]
+                    elif len(numbers) == 1:
+                        return 0.0, numbers[0]
+    except:
+        pass
+    return 5.0, 15.0
+
+def get_all_fish_links(base_url, headers):
+    """Przeczesuje spis alfabetyczny i zbiera linki do wszystkich ryb"""
+    print(f"--- Zbieram linki ze spisu alfabetycznego ---")
+    all_species_links = set()
+    
+    try:
+        response = requests.get(base_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # 1. Znajdź linki do wszystkich liter (A, B, C...)
+        letter_nav = soup.find('div', class_='spis-a-z-navigation')
+        if not letter_nav:
+            print("BŁĄD: Nie znaleziono nawigacji alfabetycznej!")
+            return []
+            
+        letter_links = [a['href'] for a in letter_nav.find_all('a', href=True)]
+        
+        # 2. Wejdź na każdą literę i wyciągnij linki do ryb
+        for l_link in letter_links:
+            print(f"Pobieram ryby na literę: {l_link.split('=')[-1]}")
+            lr = requests.get(l_link, headers=headers, timeout=10)
+            ls = BeautifulSoup(lr.content, 'html.parser')
+            
+            # Linki do ryb są wewnątrz <ul> z klasą 'spis-a-z'
+            fish_list = ls.find('ul', class_='spis-a-z')
+            if fish_list:
+                for a in fish_list.find_all('a', href=True):
+                    all_species_links.add(a['href'])
+            time.sleep(0.3) # Delikatny delay przy zbieraniu linków
+            
+    except Exception as e:
+        print(f"Błąd podczas zbierania linków: {e}")
+        
+    return list(all_species_links)
+
 def scrape():
-    # URL listy najpopularniejszych ryb
-    list_url = "https://rybyakwariowe.eu/gatunki-ryb-akwariowych/najpopularniejsze-ryby-akwariowe/"
+    # Zmieniamy URL startowy na spis alfabetyczny
+    base_url = "https://rybyakwariowe.eu/spis-alfabetyczny/"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     
-    print(f"--- START: Pobieram stronę listy: {list_url} ---")
-    try:
-        response = requests.get(list_url, headers=headers, timeout=10)
-        response.raise_for_status()
-    except Exception as e:
-        print(f"BŁĄD POŁĄCZENIA: {e}")
-        return
-
-    soup = BeautifulSoup(response.content, 'html.parser')
-    
-    # SZUKANIE LINKÓW: Szukamy wszystkich linków, które w adresie mają '/ryba-akwariowa/'
-    links = []
-    for a in soup.find_all('a', href=True):
-        href = a['href']
-        if "/ryba-akwariowa/" in href:
-            links.append(href)
-    
-    # Usuwamy duplikaty
-    links = list(set(links))
-    print(f"--- ZNALAZŁEM {len(links)} LINKÓW DO RYB ---")
-
-    if not links:
-        print("UWAGA: Nie znaleziono linków. Strona mogła zmienić strukturę.")
-        return
+    links = get_all_fish_links(base_url, headers)
+    print(f"--- ZNALAZŁEM ŁĄCZNIE {len(links)} GATUNKÓW DO POBRANIA ---")
 
     for link in links:
         if not link.startswith('http'):
             link = "https://rybyakwariowe.eu" + link
-        if "#" in link: continue
-
+        
         try:
-            time.sleep(0.5)
+            time.sleep(0.6)
+            r = requests.get(link, headers=headers, timeout=10)
             r = requests.get(link, headers=headers, timeout=10)
             s = BeautifulSoup(r.content, 'html.parser')
 
-            name = s.find('h1').get_text().strip()
+            article_tag = s.find('article')
+            if not article_tag: continue
             
-            # Pobieramy cały tekst opisu, żeby w nim szukać słów kluczowych
-            full_description = s.find('section', class_='entry-content').get_text().lower()
+            name = s.find('h1').get_text().strip()
+            latin_name = extract_latin_name(s)
+            h_min, h_max = extract_hardness_from_summary(s)
+            
+            entry_content = s.find('section', class_='entry-content')
+            full_description = entry_content.get_text().lower() if entry_content else ""
             
             size_tag = s.find('li', class_='desc-fish__ico--size')
             biotope_tag = s.find('li', class_='desc-fish__ico--biotop')
+            temp_tag = s.find('li', class_='desc-fish__ico--temp')
+            ph_tag = s.find('li', class_='desc-fish__ico--ph')
+            vol_tag = s.find('li', class_='desc-fish__ico--aquarium')
+
+            if not all([temp_tag, ph_tag, vol_tag]): 
+                print(f"⚠ Brak danych technicznych dla {name}, pomijam.")
+                continue
             
-            # Pobieranie rozmiaru (szukamy max rozmiaru z zakresu)
-            adult_size = 5.0 # domyślnie
-            if size_tag:
-                sizes = get_numbers(size_tag.get_text())
-                adult_size = max(sizes) if sizes else 5.0
+            adult_size = max(get_numbers(size_tag.get_text())) if size_tag else 5.0
+            origin_region = biotope_tag.get_text().replace('Biotop:', '').strip() if biotope_tag else "Inne"
+            temps, phs, vols = get_numbers(temp_tag.get_text()), get_numbers(ph_tag.get_text()), get_numbers(vol_tag.get_text())
 
-            # Pobieranie biotopu (regionu)
-            origin_region = "Inne"
-            if biotope_tag:
-                origin_region = biotope_tag.get_text().replace('Biotop:', '').strip()
-
-            # 1. WYKRYWANIE ŁAWICOWOŚCI
+            # WYKRYWANIE ŁAWICOWOŚCI
             schooling_keywords = ['dla grupy', 'dla stada', 'ławica', 'ławicę', 'ławicy', 'ławicowa', 'stado', 'stadna', 'grupie', 'stadne', 'kilka sztuk', 'w grupach']
             is_schooling = any(word in full_description for word in schooling_keywords)
 
@@ -102,7 +152,7 @@ def scrape():
             else:
                 aggression = 1
 
-            # 3. WYKRYWANIE STREFY (Zone)
+            # WYKRYWANIE STREFY (Zone)
             # Definicja wag dla stref
             weights_top = ['powierzchni', 'górna', 'górnej', 'tafla', 'pod powierzchnią', 'tafli']
             weights_mid = ['środkowa', 'środkowych', 'środkowej', 'toń', 'toni', 'wolna przestrzeń', 'wolnej przestrzeni']
@@ -135,37 +185,48 @@ def scrape():
             else:
                 zone = "MID"
 
-            # Reszta parametrów (Temp, pH, Vol) - tak jak wcześniej
-            temp_tag = s.find('li', class_='desc-fish__ico--temp')
-            ph_tag = s.find('li', class_='desc-fish__ico--ph')
-            vol_tag = s.find('li', class_='desc-fish__ico--aquarium')
-            
-            if not all([temp_tag, ph_tag, vol_tag]): continue
-            
-            temps = get_numbers(temp_tag.get_text())
-            phs = get_numbers(ph_tag.get_text())
-            vols = get_numbers(vol_tag.get_text())
+            # Zapis do bazy
+            fish_data = {
+                'latin_name': latin_name,
+                'temp_min': temps[0] if temps else 22,
+                'temp_max': temps[1] if len(temps) > 1 else 26,
+                'ph_min': phs[0] if phs else 6.5,
+                'ph_max': phs[1] if len(phs) > 1 else 7.5,
+                'hardness_min': h_min,
+                'hardness_max': h_max,
+                'min_tank_volume': vols[0] if vols else 60,
+                'bioload_index': round(adult_size / 10.0, 2),
+                'is_schooling': is_schooling,
+                'adult_size': adult_size,
+                'origin_region': origin_region,
+                'aggression_level': aggression,
+                'zone': zone
+            }
 
-            # Zapis/Aktualizacja w bazie
-            FishSpecies.objects.update_or_create(
+            obj, created = FishSpecies.objects.update_or_create(
                 name=name,
-                defaults={
-                    'temp_min': temps[0] if temps else 22,
-                    'temp_max': temps[1] if len(temps) > 1 else 26,
-                    'ph_min': phs[0] if phs else 6.5,
-                    'ph_max': phs[1] if len(phs) > 1 else 7.5,
-                    'min_tank_volume': vols[0] if vols else 60,
-                    'is_schooling': is_schooling,
-                    'aggression_level': aggression,
-                    'zone': zone
-                }
+                defaults=fish_data
             )
-            
-            traits = f"{'ŁAWICOWA' if is_schooling else 'SOLO'} | AGRESJA:{aggression} | STREFA:{zone}"
-            print(f"✔ {name} -> {traits}")
+
+            # print wszystkich danych
+            status = "NOWY" if created else "ZAKTUALIZOWANO"
+            print(f"\n{'='*50}")
+            print(f"[{status}] {name}")
+            print(f"{'-'*50}")
+            print(f"  Nazwa łacińska: {fish_data['latin_name']}")
+            print(f"  Pochodzenie:     {fish_data['origin_region']}")
+            print(f"  Temperatura:    {fish_data['temp_min']} - {fish_data['temp_max']} °C")
+            print(f"  pH:             {fish_data['ph_min']} - {fish_data['ph_max']}")
+            print(f"  Twardość (dH):  {fish_data['hardness_min']} - {fish_data['hardness_max']}")
+            print(f"  Min. litraż:    {fish_data['min_tank_volume']} L")
+            print(f"  Rozmiar ryby:   {fish_data['adult_size']} cm")
+            print(f"  Strefa:         {fish_data['zone']}")
+            print(f"  Agresja (1-3):  {fish_data['aggression_level']}")
+            print(f"  Stadna:         {'Tak' if fish_data['is_schooling'] else 'Nie'}")
+            print(f"{'='*50}")
 
         except Exception as e:
             print(f"✘ Błąd przy {link}: {e}")
 
 if __name__ == "__main__":
-    scrape() 
+    scrape()

@@ -12,9 +12,11 @@ class FishSpecies(models.Model):
     min_tank_volume = models.PositiveIntegerField(help_text="Minimalny litraż [L]")
     bioload_index = models.FloatField(help_text="Współczynnik obciążenia biologicznego")
     is_schooling = models.BooleanField(default=False)
+    is_solitary = models.BooleanField(default=False, verbose_name="Ryba samotnicza")
     adult_size = models.FloatField(default=5.0)
     origin_region = models.CharField(max_length=100, blank=True)
-    
+    source_url = models.URLField(max_length=500, blank=True, null=True, verbose_name="Link do źródła")
+
     WATER_ZONE_CHOICES = [
         ('TOP', 'Tafle wody'),
         ('MID', 'Środkowe partie'),

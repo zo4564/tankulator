@@ -82,7 +82,6 @@ def get_all_fish_links(base_url, headers):
     return list(all_species_links)
 
 def scrape():
-    # Zmieniamy URL startowy na spis alfabetyczny
     base_url = "https://rybyakwariowe.eu/spis-alfabetyczny/"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     
@@ -124,21 +123,21 @@ def scrape():
             temps, phs, vols = get_numbers(temp_tag.get_text()), get_numbers(ph_tag.get_text()), get_numbers(vol_tag.get_text())
 
             # WYKRYWANIE ŁAWICOWOŚCI
-            schooling_keywords = ['dla grupy', 'dla stada', 'ławica', 'ławicę', 'ławicy', 'ławicowa', 'stado', 'stadna', 'grupie', 'stadne', 'kilka sztuk', 'w grupach']
+            schooling_keywords = ['dla grupy', 'dla stada', 'ławica', 'ławicę', 'ławicy', 'ławicowa', 'stado', 'stadna', 'grupie', 'stadne', 'kilka sztuk', 'w grupach', 'grupka', 'nieśmiałymi' ]
             is_schooling = any(word in full_description for word in schooling_keywords)
 
             full_text = (name + " " + full_description).lower()
             
             # WYKRYWANIE AGRESJI 
             # Słowniki wag dla agresji
-            weights_3 = ['agresywny', 'agresywna', 'atakuje', 'bardzo agresywna', 'agresja']
+            weights_3 = ['agresywny', 'agresywna', 'atakuje', 'bardzo agresywna', 'agresja', 'bojownik']
             weights_2 = ['terytorialna', 'terytorialny', 'terytorialny', 'rewir', 'broni', 'hierarchia', 'hierarchię']
-            weights_1 = ['łagodna', 'towarzyska', 'spokojna', 'towarzyskiego', 'pokojowa', 'pokojowy', 'łagodny', 'spokojny']
+            weights_1 = ['łagodna', 'towarzyska', 'spokojna', 'towarzyskiego', 'pokojowa', 'pokojowy', 'łagodny', 'spokojny', 'żyworodna']
 
             # Liczenie punktów
-            score_3 = sum(full_text.count(word) for word in weights_3) * 3  # Waga x3
-            score_2 = sum(full_text.count(word) for word in weights_2) * 2  # Waga x2
-            score_1 = sum(full_text.count(word) for word in weights_1) * 1  # Waga x1
+            score_3 = sum(full_text.count(word) for word in weights_3) * 2  # Waga x3
+            score_2 = sum(full_text.count(word) for word in weights_2) * 3  # Waga x2
+            score_1 = sum(full_text.count(word) for word in weights_1) * 2  # Waga x1
 
             # Agresja - decyzja na podstawie najwyższego wyniku
             max_score = max(score_3, score_2, score_1)
@@ -152,11 +151,16 @@ def scrape():
             else:
                 aggression = 1
 
+            # WYKRYWANIE RYB KTÓRE POWINNY ŻYĆ SOLO
+            solitary_keywords = ['samotnicza', 'samotnik','bezwzględnie sam', 'osobny zbiornik']
+            # Bojownik
+            is_solitary = any(word in full_description for word in solitary_keywords) or "bojownik" in name.lower()
+
             # WYKRYWANIE STREFY (Zone)
             # Definicja wag dla stref
             weights_top = ['powierzchni', 'górna', 'górnej', 'tafla', 'pod powierzchnią', 'tafli']
             weights_mid = ['środkowa', 'środkowych', 'środkowej', 'toń', 'toni', 'wolna przestrzeń', 'wolnej przestrzeni']
-            weights_btm = ['przy dnie', 'denna', 'dolnej', 'przekopuje', 'kopie']
+            weights_btm = ['przy dnie', 'denna', 'dolnej', 'przekopuje', 'kopie', 'biofilmem', 'glony', 'glonami']
 
             # Liczenie punktów dla stref
             score_top = sum(full_text.count(word) for word in weights_top)
@@ -170,7 +174,7 @@ def scrape():
             if any(w in name.lower() for w in ['pstrążeń', 'szczupieńczyk']):
                 score_top += 10  
 
-            if any(w in name.lower() for w in ['razbora', 'ławicowa']):
+            if any(w in name.lower() for w in ['razbora', 'ławicowa', 'babka']):
                 score_mid += 10  
 
             # Wybór strefy na podstawie najwyższego wyniku
@@ -197,10 +201,12 @@ def scrape():
                 'min_tank_volume': vols[0] if vols else 60,
                 'bioload_index': round(adult_size / 10.0, 2),
                 'is_schooling': is_schooling,
+                'is_solitary': is_solitary,
                 'adult_size': adult_size,
                 'origin_region': origin_region,
                 'aggression_level': aggression,
-                'zone': zone
+                'zone': zone,
+                'source_url': link
             }
 
             obj, created = FishSpecies.objects.update_or_create(
@@ -223,6 +229,7 @@ def scrape():
             print(f"  Strefa:         {fish_data['zone']}")
             print(f"  Agresja (1-3):  {fish_data['aggression_level']}")
             print(f"  Stadna:         {'Tak' if fish_data['is_schooling'] else 'Nie'}")
+            print(f"  Samotnik:       {'Tak' if fish_data['is_solitary'] else 'Nie'}")
             print(f"{'='*50}")
 
         except Exception as e:

@@ -38,7 +38,7 @@ class AquariumEngine:
                 if (f.adult_size * min_qty) <= (self.volume / 2):
                     final_candidates.append(f)
             
-            # 4. Agresywne cięcie dla wydajności (Top 25 najlepiej pasujących pod pH)
+            # 4. Agresywne cięcie dla wydajności (cięcie względem ph)
             if len(final_candidates) > 25:
                 target_ph = self.ph if self.ph else 7.0
                 final_candidates = sorted(
@@ -61,110 +61,193 @@ class AquariumCSP:
         self.species_map = {f.id: f for f in self.candidates}
         self.iteration_count = 0 
 
+    def score_combination(self, combo):
+        score = 0
+
+        # --- 1. Parametry wody ---
+        max_temp_min = max(f.temp_min for f in combo)
+        min_temp_max = min(f.temp_max for f in combo)
+
+        max_ph_min = max(f.ph_min for f in combo)
+        min_ph_max = min(f.ph_max for f in combo)
+
+        if max_temp_min <= min_temp_max:
+            score += 20
+        else:
+            score -= 50
+
+        if max_ph_min <= min_ph_max:
+            score += 20
+        else:
+            score -= 50
+
+        # --- 2. Różnorodność stref ---
+        zones = set(f.zone for f in combo)
+        score += len(zones) * 10
+
+        # --- 3. Agresja ---
+        for i in range(len(combo)):
+            for j in range(i + 1, len(combo)):
+                f1, f2 = combo[i], combo[j]
+                if abs(f1.aggression_level - f2.aggression_level) >= 2:
+                    score -= 20
+
+        # --- 4. Biotop ---
+        regions = [f.origin_region for f in combo if f.origin_region]
+        if regions and len(set(regions)) == 1:
+            score += 15
+
+        # --- 5. Preferuj ławice ---
+        schooling_count = sum(1 for f in combo if f.is_schooling)
+        score += schooling_count * 5
+
+        return score
+
     def solve(self):
         if not self.candidates:
             return [], 0
 
-        print(f"\n--- START CSP ---")
+        print("\n--- START HYBRID CSP ---")
 
-        # --- DEFINICJA DOMEN (SKOKOWE) ---
-        for fish in self.candidates:
-            # Ile cm ryby przypada na 1 sztukę
-            bioload_per_fish = fish.adult_size if fish.adult_size > 0 else 5
-            max_possible = int((self.volume / 2) / bioload_per_fish)
-            
-            if fish.is_schooling:
-                # Ryby ławicowe: 0 LUB stado (6, 10, 15, 20, 25...)
-                # Skok co 5 sztuk drastycznie redukuje liczbę kombinacji
-                domain = [0, 6] 
-                domain += [i for i in range(10, min(max_possible, 20) + 1, 10)]
-            else:
-                # Ryby samotne/pary: 0, 1 lub 2
-                domain = [0, 1]
-                if max_possible >= 2:
-                    domain.append(2)
-            
-            # Usuwamy duplikaty i sortujemy
-            domain = sorted(list(set(domain)))
-            self.problem.addVariable(fish.id, domain)
-            print(f"Zoptymalizowana domena dla {fish.name}: {domain}")
-
-        # --- OGRANICZENIA ---
-
-        def diversity_constraint(*counts):
-            self.iteration_count += 1
-            if self.iteration_count % 5000 == 0:
-                print(f"Przetworzono {self.iteration_count} kombinacji...")
-
-            active_species = [c for c in counts if c > 0]
-            # Max 3 gatunki to optymalny balans dla algorytmu i estetyki akwarium
-            return 1 <= len(active_species) <= 3
-
-        def water_compatibility_constraint(*counts):
-            selected_fish = [self.species_map[self.species_ids[i]] 
-                            for i, count in enumerate(counts) if count > 0]
-            if not selected_fish: return True
-            
-            max_temp_min = max(f.temp_min for f in selected_fish)
-            min_temp_max = min(f.temp_max for f in selected_fish)
-            max_ph_min = max(f.ph_min for f in selected_fish)
-            min_ph_max = min(f.ph_max for f in selected_fish)
-            
-            return (max_temp_min <= min_temp_max) and (max_ph_min <= min_ph_max)
-
-        def bioload_constraint(*counts):
-            total_cm = sum(count * self.species_map[self.species_ids[i]].adult_size 
-                          for i, count in enumerate(counts))
-            return total_cm <= (self.volume / 2)
-
-        def aggression_constraint(*counts):
-            selected_fish = [self.species_map[self.species_ids[i]] 
-                            for i, count in enumerate(counts) if count > 0]
-            for i in range(len(selected_fish)):
-                for j in range(i + 1, len(selected_fish)):
-                    f1, f2 = selected_fish[i], selected_fish[j]
-                    # Konflikt: Agresywna (3) z Łagodną (1)
-                    if (f1.aggression_level == 3 and f2.aggression_level == 1) or \
-                       (f2.aggression_level == 3 and f1.aggression_level == 1):
-                        return False
-            return True
-        
-        def solitary_species_constraint(*counts):
-            has_solitary = False
-            for i, count in enumerate(counts):
-                if count > 0 and self.species_map[self.species_ids[i]].is_solitary:
-                    has_solitary = True
-                if count > 1: return False
-                    
-            if has_solitary and sum(counts) > 1:
-                return False
-            return True
-                
-
-        self.problem.addConstraint(diversity_constraint, self.species_ids)
-        self.problem.addConstraint(water_compatibility_constraint, self.species_ids)
-        self.problem.addConstraint(bioload_constraint, self.species_ids)
-        self.problem.addConstraint(aggression_constraint, self.species_ids)
-        self.problem.addConstraint(solitary_species_constraint, self.species_ids)
+        seen = set()
 
         start_time = time.perf_counter()
-        solutions = self.problem.getSolutions()
+        all_solutions = []
+
+        MAX_COMBINATIONS = 50
+        MAX_SOLUTIONS = 200
+
+        from itertools import combinations
+
+        combos = []
+        for k in range(2, 4):
+            combos.extend(list(combinations(self.candidates, k)))
+
+        scored_combos = [
+            (combo, self.score_combination(combo))
+            for combo in combos
+        ]
+
+        scored_combos.sort(key=lambda x: x[1], reverse=True)
+
+        combos = [combo for combo, score in scored_combos[:MAX_COMBINATIONS]]
+
+        print(f"Testujemy {len(combos)} kombinacji")
+
+        for combo in combos:
+
+            problem = Problem()
+
+            species_ids = [f.id for f in combo]
+            species_map = {f.id: f for f in combo}
+
+            # --- DOMENY ---
+            for fish in combo:
+                bioload_per_fish = fish.adult_size if fish.adult_size > 0 else 5
+                max_possible = int((self.volume / 2) / bioload_per_fish)
+
+                if fish.is_schooling:
+                    domain = [0, 6, 10]
+                else:
+                    domain = [0, 1]
+                    if max_possible >= 2:
+                        domain.append(2)
+
+                problem.addVariable(fish.id, domain)
+
+            # --- OGRANICZENIA ---
+
+            def diversity_constraint(*counts):
+                active = [c for c in counts if c > 0]
+                return 1 <= len(active) <= 3
+
+            def water_constraint(*counts):
+                selected = [species_map[species_ids[i]]
+                            for i, c in enumerate(counts) if c > 0]
+
+                if not selected:
+                    return True
+
+                max_temp_min = max(f.temp_min for f in selected)
+                min_temp_max = min(f.temp_max for f in selected)
+                max_ph_min = max(f.ph_min for f in selected)
+                min_ph_max = min(f.ph_max for f in selected)
+
+                return (max_temp_min <= min_temp_max) and (max_ph_min <= min_ph_max)
+
+            def bioload_constraint(*counts):
+                total = sum(
+                    counts[i] * species_map[species_ids[i]].adult_size
+                    for i in range(len(counts))
+                )
+                return total <= (self.volume / 2)
+
+            def aggression_constraint(*counts):
+                selected = [species_map[species_ids[i]]
+                            for i, c in enumerate(counts) if c > 0]
+
+                for i in range(len(selected)):
+                    for j in range(i + 1, len(selected)):
+                        f1, f2 = selected[i], selected[j]
+                        if (f1.aggression_level == 3 and f2.aggression_level == 1) or \
+                        (f2.aggression_level == 3 and f1.aggression_level == 1):
+                            return False
+                return True
+
+            def solitary_constraint(*counts):
+                has_solitary = False
+
+                for i, c in enumerate(counts):
+                    fish = species_map[species_ids[i]]
+
+                    if c > 0 and fish.is_solitary:
+                        has_solitary = True
+
+                    if fish.is_solitary and c > 1:
+                        return False
+
+                if has_solitary and sum(counts) > 1:
+                    return False
+
+                return True
+
+            # constrainty
+            problem.addConstraint(diversity_constraint, species_ids)
+            problem.addConstraint(water_constraint, species_ids)
+            problem.addConstraint(bioload_constraint, species_ids)
+            problem.addConstraint(aggression_constraint, species_ids)
+            problem.addConstraint(solitary_constraint, species_ids)
+
+            # --- ROZWIĄZYWANIE ---
+            for sol in problem.getSolutionIter():
+
+                result = []
+                for f_id, count in sol.items():
+                    if count > 0:
+                        fish_copy = copy.copy(species_map[f_id])
+                        fish_copy.count = count
+                        result.append(fish_copy)
+
+                if result:
+                    signature = tuple(sorted(
+                        (f.id, f.count) for f in result
+                    ))
+
+                    if signature not in seen:
+                        seen.add(signature)
+                        all_solutions.append(result)
+
+                if len(all_solutions) >= MAX_SOLUTIONS:
+                    break
+
+            if len(all_solutions) >= MAX_SOLUTIONS:
+                break
+
         end_time = time.perf_counter()
-        
-        duration = end_time - start_time
-        print(f"Sukces! Znaleziono {len(solutions)} propozycji w {duration:.2f}s")
 
-        formatted_solutions = []
-        for sol in solutions:
-            item = []
-            for f_id, count in sol.items():
-                if count > 0:
-                    fish_copy = copy.copy(self.species_map[f_id])
-                    fish_copy.count = count 
-                    item.append(fish_copy)
-            formatted_solutions.append(item)
+        print(f"Znaleziono {len(all_solutions)} rozwiązań w {end_time - start_time:.2f}s")
 
-        return formatted_solutions, duration
+        return all_solutions, (end_time - start_time)
 
 # --- MODUŁ REGUŁOWY ---     
 
@@ -215,7 +298,7 @@ class RuleEngine:
                 score += self.weights['aggression_safety']
                 reasons.append("Obsada bardzo łagodna")
             elif max_aggression == 2:
-                # Mniejszy bonus lub brak kary dla ryb terytorialnych (opcjonalnie)
+                # Mniejszy bonus lub brak kary dla ryb terytorialnych 
                 score += (self.weights['aggression_safety'] * 0.5)
                 reasons.append("Ryby o umiarkowanym temperamencie")
 
@@ -245,5 +328,5 @@ class RuleEngine:
                 'reasons': reasons
             })
 
-        # Zwracamy tylko najlepsze 50 wyników, żeby nie przeciążać widoku
+        # Zwracamy tylko najlepsze 50 wyników
         return sorted(ranked_results, key=lambda x: x['total_score'], reverse=True)[:50]

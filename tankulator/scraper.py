@@ -123,21 +123,24 @@ def scrape():
             temps, phs, vols = get_numbers(temp_tag.get_text()), get_numbers(ph_tag.get_text()), get_numbers(vol_tag.get_text())
 
             # WYKRYWANIE ŁAWICOWOŚCI
-            schooling_keywords = ['dla grupy', 'dla stada', 'ławica', 'ławicę', 'ławicy', 'ławicowa', 'stado', 'stadna', 'grupie', 'stadne', 'kilka sztuk', 'w grupach', 'grupka', 'nieśmiałymi' ]
+            schooling_keywords = ['dla grupy', 'dla stada', 'ławica', 'ławicę', 'ławicy', 'ławicowa', 'stado', 'stadna', 'grupie', 'stadne', 'kilka sztuk', 'w grupach', 'grupka', 'nieśmiałymi', 'piękniczkowatych' ]
             is_schooling = any(word in full_description for word in schooling_keywords)
+
+            if any(w in name.lower() for w in ['kirysek', 'tetra', 'brzanka', 'neon', 'razbora', 'danio', 'zwinnik', 'bystrzyk', 'gupik', 'tęczanka']):
+                score_btm += 10
 
             full_text = (name + " " + full_description).lower()
             
             # WYKRYWANIE AGRESJI 
             # Słowniki wag dla agresji
-            weights_3 = ['agresywny', 'agresywna', 'atakuje', 'bardzo agresywna', 'agresja', 'bojownik']
+            weights_3 = ['agresywny', 'agresywna', 'atakuje', 'bardzo agresywna', 'agresja', 'bojownik', 'najlepiej trzymać parę', 'bardzo agresywne', 'zabić']
             weights_2 = ['terytorialna', 'terytorialny', 'terytorialny', 'rewir', 'broni', 'hierarchia', 'hierarchię']
             weights_1 = ['łagodna', 'towarzyska', 'spokojna', 'towarzyskiego', 'pokojowa', 'pokojowy', 'łagodny', 'spokojny', 'żyworodna']
 
             # Liczenie punktów
-            score_3 = sum(full_text.count(word) for word in weights_3) * 2  # Waga x3
-            score_2 = sum(full_text.count(word) for word in weights_2) * 3  # Waga x2
-            score_1 = sum(full_text.count(word) for word in weights_1) * 2  # Waga x1
+            score_3 = sum(full_text.count(word) for word in weights_3) * 2
+            score_2 = sum(full_text.count(word) for word in weights_2) * 3
+            score_1 = sum(full_text.count(word) for word in weights_1) * 2 
 
             # Agresja - decyzja na podstawie najwyższego wyniku
             max_score = max(score_3, score_2, score_1)
@@ -159,7 +162,7 @@ def scrape():
             # WYKRYWANIE STREFY (Zone)
             # Definicja wag dla stref
             weights_top = ['powierzchni', 'górna', 'górnej', 'tafla', 'pod powierzchnią', 'tafli']
-            weights_mid = ['środkowa', 'środkowych', 'środkowej', 'toń', 'toni', 'wolna przestrzeń', 'wolnej przestrzeni']
+            weights_mid = ['środkowa', 'środkowych', 'środkowej', 'toń', 'toni', 'wolna przestrzeń', 'wolnej przestrzeni', 'przestrzeń do pływania']
             weights_btm = ['przy dnie', 'denna', 'dolnej', 'przekopuje', 'kopie', 'biofilmem', 'glony', 'glonami']
 
             # Liczenie punktów dla stref
@@ -171,10 +174,10 @@ def scrape():
             if any(w in name.lower() for w in ['kirysek', 'zbrojnik', 'piskorek', 'bocja']):
                 score_btm += 10  
             
-            if any(w in name.lower() for w in ['pstrążeń', 'szczupieńczyk']):
+            if any(w in name.lower() for w in ['pstrążeń', 'szczupieńczyk', 'proporczykowiec']):
                 score_top += 10  
 
-            if any(w in name.lower() for w in ['razbora', 'ławicowa', 'babka']):
+            if any(w in name.lower() for w in ['razbora', 'ławicowa', 'babka', 'bystrzyk']):
                 score_mid += 10  
 
             # Wybór strefy na podstawie najwyższego wyniku

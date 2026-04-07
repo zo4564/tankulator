@@ -23,4 +23,54 @@
         </div>
     {% endif %}
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const fishSelect = document.getElementById("fishSelect");
+    const tempInput = document.getElementById("tempInput");
+    const phInput = document.getElementById("phInput");
+
+    if (!fishSelect || !tempInput || !phInput) {
+        console.error("Brak elementów formularza!");
+        return;
+    }
+
+    console.log("JS działa");
+
+    fishSelect.addEventListener("change", function() {
+        const fishId = this.value;
+
+        console.log("Wybrano rybę:", fishId);
+
+        if (!fishId) return;
+
+        fetch(`/fish/${fishId}/`)
+            .then(response => response.json())
+            .then(data => {
+                console.log("Dane z API:", data);
+
+                if (data.error) return;
+
+                const tempAvg = (data.temp_min + data.temp_max) / 2;
+                const phAvg = (data.ph_min + data.ph_max) / 2;
+
+                tempInput.value = tempAvg.toFixed(1);
+                phInput.value = phAvg.toFixed(1);
+
+                tempInput.min = data.temp_min;
+                tempInput.max = data.temp_max;
+
+                phInput.min = data.ph_min;
+                phInput.max = data.ph_max;
+
+                tempInput.title = `Zakres: ${data.temp_min} - ${data.temp_max}`;
+                phInput.title = `Zakres: ${data.ph_min} - ${data.ph_max}`;
+            })
+            .catch(error => {
+                console.error("Błąd fetch:", error);
+            });
+    });
+});
+</script>
+
 {% endblock %}

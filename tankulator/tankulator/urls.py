@@ -16,9 +16,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from core.views import home_view
+from core.views import home_view, fish_params
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', home_view, name='home'),
+    path('fish/<int:fish_id>/', fish_params, name='fish_params'),
 ]

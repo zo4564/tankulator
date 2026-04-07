@@ -1,27 +1,57 @@
 <div class="card p-4 shadow-sm mb-4">
-    <form method="GET" action="{% url 'home' %}"> <div class="row g-3">
+    <form method="GET" action="{% url 'home' %}">
+        <div class="row g-3">
+
             <div class="col-md-2">
                 <label class="form-label">Pojemność (L)</label>
-                <input type="number" name="volume" class="form-control" value="{{ query_params.volume|default:60 }}">
+                <input type="number" name="volume" class="form-control"
+                       value="{{ query_params.volume|default:60 }}">
             </div>
+
             <div class="col-md-2">
                 <label class="form-label">Temp. (°C)</label>
-                <input type="number" step="0.5" name="temp" class="form-control" value="{{ query_params.temp|default:25 }}">
+                <input id="tempInput" type="number" step="0.5" name="temp"
+                       class="form-control"
+                       value="{{ query_params.temp|default:25 }}">
             </div>
+
             <div class="col-md-2">
                 <label class="form-label">Odczyn (pH)</label>
-                <input type="number" step="0.1" name="ph" class="form-control" value="{{ query_params.ph|default:7.0 }}">
+                <input id="phInput" type="number" step="0.1" name="ph"
+                       class="form-control"
+                       value="{{ query_params.ph|default:7.0 }}">
             </div>
+
             <div class="col-md-3 d-flex align-items-center justify-content-center">
                 <div class="form-check">
-                    <input class="form-check-input" type="checkbox" name="strict_biotope" id="biotopeCheck" 
-                        {% if query_params.strict_biotope %}checked{% endif %}>
-                    <label class="form-check-label" for="biotopeCheck">Tylko ten sam biotop</label>
+                    <input class="form-check-input" type="checkbox"
+                           name="strict_biotope" id="biotopeCheck"
+                           {% if query_params.strict_biotope %}checked{% endif %}>
+                    <label class="form-check-label" for="biotopeCheck">
+                        Tylko ten sam biotop
+                    </label>
                 </div>
             </div>
-            <div class="col-md-3 d-flex align-items-end">
-                <button type="submit" class="btn btn-primary w-100 py-2">Oblicz obsadę</button>
+
+            <div class="col-md-3">
+                <label class="form-label">Gatunek bazowy</label>
+                <select id="fishSelect" name="base_fish" class="form-control">
+                    <option value="">-- brak --</option>
+                    {% for fish in fish_list %}
+                        <option value="{{ fish.id }}"
+                            {% if query_params.base_fish == fish.id|stringformat:"s" %}selected{% endif %}>
+                            {{ fish.name }}
+                        </option>
+                    {% endfor %}
+                </select>
             </div>
+
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100 py-2">
+                    Oblicz obsadę
+                </button>
+            </div>
+
         </div>
     </form>
 </div>

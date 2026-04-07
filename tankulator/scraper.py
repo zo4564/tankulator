@@ -126,7 +126,7 @@ def scrape():
             schooling_keywords = ['dla grupy', 'dla stada', 'ławica', 'ławicę', 'ławicy', 'ławicowa', 'stado', 'stadna', 'grupie', 'stadne', 'kilka sztuk', 'w grupach', 'grupka', 'nieśmiałymi', 'piękniczkowatych' ]
             is_schooling = any(word in full_description for word in schooling_keywords)
 
-            if any(w in name.lower() for w in ['kirysek', 'tetra', 'brzanka', 'neon', 'razbora', 'danio', 'zwinnik', 'bystrzyk', 'gupik', 'tęczanka']):
+            if any(w in name.lower() for w in ['kirysek', 'tetra', 'babka', 'brzanka', 'neon', 'razbora', 'danio', 'zwinnik', 'bystrzyk', 'gupik', 'tęczanka']):
                 score_btm += 10
 
             full_text = (name + " " + full_description).lower()
@@ -170,14 +170,14 @@ def scrape():
             score_mid = sum(full_text.count(word) for word in weights_mid)
             score_btm = sum(full_text.count(word) for word in weights_btm)
 
-            # Specjalne bonusy dla konkretnych grup (Heurystyka)
+            # Specjalne bonusy dla konkretnych grups
             if any(w in name.lower() for w in ['kirysek', 'zbrojnik', 'piskorek', 'bocja']):
                 score_btm += 10  
             
             if any(w in name.lower() for w in ['pstrążeń', 'szczupieńczyk', 'proporczykowiec']):
                 score_top += 10  
 
-            if any(w in name.lower() for w in ['razbora', 'ławicowa', 'babka', 'bystrzyk']):
+            if any(w in name.lower() for w in ['razbora', 'ławicowa', 'babka', 'bystrzyk', 'danio', 'brzanka', 'neon']):
                 score_mid += 10  
 
             # Wybór strefy na podstawie najwyższego wyniku

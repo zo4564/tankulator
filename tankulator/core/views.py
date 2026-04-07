@@ -2,14 +2,24 @@ from django.shortcuts import render
 import time
 from .models import FishSpecies
 from .services.recommender import AquariumEngine, AquariumCSP, RuleEngine
+from django.http import JsonResponse
+
 
 def home_view(request):
+    fish_list = FishSpecies.objects.all().order_by('name')
     # Pobieranie danych z formularza
     volume = request.GET.get('volume')
     temp = request.GET.get('temp')
     ph = request.GET.get('ph')
-    profile = request.GET.get('profile', 'zrównoważony')
-    strict_biotope = request.GET.get('strict_biotope') == 'on' # Checkboxy w HTML przesyłają 'on'
+    strict_biotope = request.GET.get('strict_biotope') == 'on'
+    base_fish_id = request.GET.get('base_fish')
+    base_fish = None
+
+    if base_fish_id:
+        try:
+            base_fish = FishSpecies.objects.get(id=base_fish_id)
+        except FishSpecies.DoesNotExist:
+            base_fish = None
     
     ranking = []
     total_process_time = 0
@@ -24,57 +34,77 @@ def home_view(request):
 
             start_full_process = time.perf_counter()
 
-            engine = AquariumEngine(volume=vol_int, temp=temp_float, ph=ph_float)
-            # candidates to teraz lista obiektów po "agresywnym" filtrze
+            engine = AquariumEngine(
+                volume=vol_int,
+                temp=temp_float,
+                ph=ph_float,
+                base_fish=base_fish
+            )
+
             candidates, pre_time = engine.get_filtered_candidates(use_preprocessing=True)
             
             if not candidates:
-                return render(request, 'core/home.html', {'ranking': [], 'error': 'Brak ryb spełniających wymagania.'})
+                return render(request, 'core/home.html', {
+                    'ranking': [],
+                    'error': 'Brak ryb spełniających wymagania.'
+                })
 
-            # 2. Logika Biotopu (Grupowanie przed CSP)
+            # 2. Biotop
             if strict_biotope:
-                # Wyciągamy unikalne regiony z przefiltrowanych kandydatów
-                available_regions = set(f.origin_region for f in candidates if f.origin_region)
+                available_regions = set(
+                    f.origin_region for f in candidates if f.origin_region
+                )
                 
                 for region in available_regions:
-                    region_candidates = [f for f in candidates if f.origin_region == region]
-                    csp = AquariumCSP(region_candidates, vol_int)
+                    region_candidates = [
+                        f for f in candidates if f.origin_region == region
+                    ]
+                    csp = AquariumCSP(region_candidates, vol_int, base_fish=base_fish)
                     sols, _ = csp.solve()
                     solutions.extend(sols)
             else:
-                # Standardowe CSP dla wszystkich pasujących ryb
-                csp = AquariumCSP(candidates, vol_int)
+                csp = AquariumCSP(candidates, vol_int, base_fish=base_fish)
                 solutions, _ = csp.solve()
 
-            # 3. Definicja wag na podstawie profilu
-            # Dopasowałem klucze do tych, które mamy w nowym RuleEngine
             weights = {
-                'zone_completeness': 20,
-                'biomass_optimization': 30,
-                'region_consistency': 25,
-                'aggression_safety': 15
+                'zone_completeness': 30,
+                'biomass_optimization': 25,
+                'region_consistency': 20,
+                'aggression_safety': 25
             }
 
-            if profile == 'bezpieczny':
-                weights['aggression_safety'] = 50
-                weights['biomass_optimization'] = 10 # Mniejsze parcie na max ryb
-            elif profile == 'esteta':
-                weights['zone_completeness'] = 60
-                weights['region_consistency'] = 10
-
-            # 4. Ranking i punktacja
+            # 4. Ranking
             if solutions:
-                ranker = RuleEngine(solutions=solutions, volume=vol_int, weights=weights)
+                ranker = RuleEngine(
+                    solutions=solutions,
+                    volume=vol_int,
+                    weights=weights
+                )
                 ranking = ranker.score_and_rank()
             
             total_process_time = time.perf_counter() - start_full_process
 
         except (ValueError, TypeError):
-            return render(request, 'core/home.html', {'error': 'Wprowadź poprawne dane liczbowe.'})
+            return render(request, 'core/home.html', {
+                'error': 'Wprowadź poprawne dane liczbowe.'
+            })
 
     return render(request, 'core/home.html', {
         'ranking': ranking,
         'process_time': round(total_process_time, 4),
         'count': len(ranking),
-        'query_params': request.GET
+        'query_params': request.GET,
+        'fish_list': fish_list
     })
+
+def fish_params(request, fish_id):
+    try:
+        fish = FishSpecies.objects.get(id=fish_id)
+        return JsonResponse({
+            'temp_min': fish.temp_min,
+            'temp_max': fish.temp_max,
+            'ph_min': fish.ph_min,
+            'ph_max': fish.ph_max,
+        })
+    except FishSpecies.DoesNotExist:
+        return JsonResponse({'error': 'not found'}, status=404)

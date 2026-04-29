@@ -1,0 +1,41 @@
+{
+  "rules": [
+    {
+      "name": "base_fish",
+      "type": "base_fish",
+      "params": {
+        "bonus": 500,
+        "penalty": -1000
+      }
+    },
+    {
+      "name": "zone_completeness",
+      "type": "zones",
+      "weight": 200
+    },
+    {
+      "name": "biomass_optimal",
+      "type": "biomass",
+      "weight": 15,
+      "params": {
+        "min": 0.7,
+        "max": 0.9
+      }
+    },
+    {
+      "name": "region_consistency",
+      "type": "region",
+      "weight": 15
+    },
+    {
+      "name": "aggression",
+      "type": "aggression",
+      "weight": 0
+    },
+    {
+      "name": "solitary",
+      "type": "solitary",
+      "weight": 20
+    }
+  ]
+}

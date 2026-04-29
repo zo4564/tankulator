@@ -1,9 +1,21 @@
 from django.shortcuts import render
 import time
 from .models import FishSpecies
-from .services.recommender import AquariumEngine, AquariumCSP, RuleEngine
+from .services.preprocessing import AquariumEngine
+from .services.csp import AquariumCSP
+from .services.rules.engine import RuleEngine
 from django.http import JsonResponse
 
+from django.conf import settings
+import os
+
+RULES_PATH = os.path.join(
+    settings.BASE_DIR,
+    "core",
+    "services",
+    "rules",
+    "rules.json"
+)
 
 def home_view(request):
     fish_list = FishSpecies.objects.all().order_by('name')
@@ -78,7 +90,8 @@ def home_view(request):
                 ranker = RuleEngine(
                     solutions=solutions,
                     volume=vol_int,
-                    weights=weights
+                    base_fish_id=base_fish.id if base_fish else None,
+                    rules_path=RULES_PATH
                 )
                 ranking = ranker.score_and_rank()
             
@@ -105,6 +118,7 @@ def fish_params(request, fish_id):
             'temp_max': fish.temp_max,
             'ph_min': fish.ph_min,
             'ph_max': fish.ph_max,
+            'volume': fish.min_tank_volume,
         })
     except FishSpecies.DoesNotExist:
         return JsonResponse({'error': 'not found'}, status=404)

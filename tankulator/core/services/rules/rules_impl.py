@@ -20,9 +20,11 @@ def rule_zones(ctx, params):
     
 @register_rule("biomass")
 def rule_biomass(ctx, params):
-    if params["min"] <= ctx.capacity_usage <= params["max"]:
-        return 1, "Optymalne wypełnienie akwarium", None
-    return 0, None, None
+    target = 0.85
+    tolerance = 0.05
+    diff = abs(ctx.capacity_usage - target)
+    score = max(0, 1 - diff / tolerance)
+    return score, "Optymalne zapełnienie akwarium", None
 
 @register_rule("region")
 def rule_region(ctx, params):
@@ -54,3 +56,40 @@ def rule_solitary(ctx, params):
     return 0, None, None
 
   
+@register_rule("diversity")
+def rule_diversity(ctx, params):
+    counts = [f.count for f in ctx.fish_list if f.count > 0]
+    if len(counts) < 3:
+        return 0, None, None
+    ratio = min(counts) / max(counts)
+    species_score = min(len(counts) / 3, 1)
+    score = ratio * species_score
+    if score > 0.2:
+        return score, "Różnorodność gatunków", None
+    else:
+        return score, None, None
+
+@register_rule("school_size")
+def rule_school_size(ctx, params):
+    if not ctx.schooling_fish:
+        return 0, None, None
+    scores = []
+    for fish in ctx.schooling_fish:
+        if fish.count < 12:
+            scores.append(0)
+            continue
+        target_school = max(
+            12,
+            int(
+                ctx.volume /
+                (fish.adult_size * 2)
+            )
+        )
+        ratio = fish.count / target_school
+        score = min(ratio, 1)
+        scores.append(score)
+    final_score = sum(scores) / len(scores)
+    reason = None
+    if final_score >= 0.9:
+        reason = "Duże, naturalne stada"
+    return final_score, reason, None

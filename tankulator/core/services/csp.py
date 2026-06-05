@@ -3,6 +3,7 @@ import copy
 from constraint import Problem
 from ..models import FishSpecies
 from .logger import log
+from .experiment_logger import log_exp
 
 # --- MODUŁ CSP ---
 
@@ -35,9 +36,9 @@ class AquariumCSP:
                 if abs(combo[i].aggression_level - combo[j].aggression_level) >= 2:
                     score -= 20
 
-        regions = [f.origin_region for f in combo if f.origin_region]
-        if regions and len(set(regions)) == 1:
-            score += 15
+        #regions = [f.origin_region for f in combo if f.origin_region]
+        #if regions and len(set(regions)) == 1:
+            #score += 15
 
         score += sum(1 for f in combo if f.is_schooling) * 5
 
@@ -58,12 +59,13 @@ class AquariumCSP:
         start_time = time.perf_counter()
         all_solutions = []
 
-        MAX_COMBINATIONS = 500
+        MAX_COMBINATIONS = 1000
         MAX_SOLUTIONS = 1000
 
         from itertools import combinations
 
         combos = []
+
         for k in range(2, 4):
             all_combos = list(combinations(self.candidates, k))
 
@@ -74,6 +76,15 @@ class AquariumCSP:
                 ]
 
             combos.extend(all_combos)
+        
+        generated_combos = len(combos)
+
+        log_exp(
+            f"CSP_GENERATION;"
+            f"VOLUME={self.volume};"
+            f"CANDIDATES={len(self.candidates)};"
+            f"GENERATED={generated_combos}"
+        )
 
         # DEBUG combos
         if self.base_fish:
@@ -92,6 +103,14 @@ class AquariumCSP:
 
         combos = [combo for combo, score in scored_combos[:MAX_COMBINATIONS]]
 
+        selected_combos = len(combos)
+
+        log_exp(
+            f"CSP_HEURISTIC;"
+            f"GENERATED={generated_combos};"
+            f"SELECTED={selected_combos}"
+        )
+
         log(f"Testujemy {len(combos)} kombinacji")
 
         # DEBUG TOP combos
@@ -109,26 +128,36 @@ class AquariumCSP:
             species_map = {f.id: f for f in combo}
 
             for fish in combo:
-                bioload_per_fish = fish.adult_size if fish.adult_size > 0 else 5
-                max_possible = int((self.volume / 2) / bioload_per_fish)
+                bioload_per_fish = max(fish.bioload_index, 1)
+
+                max_possible = max(
+                    1,
+                    int(self.volume / bioload_per_fish)
+                )
+
+                if fish.is_schooling:
+                    possible_counts = [6, 8, 10, 12, 15, 20, 25, 30]
+                else:
+                    if self.volume >= 150:
+                        possible_counts = [2, 6, 10]
+                    else:
+                        possible_counts = [2]
+
+                possible_counts = [
+                    c for c in possible_counts
+                    if c <= max_possible
+                ]
+
+                if not possible_counts and not fish.is_schooling:
+                    possible_counts = [min(max_possible, 2)]
 
                 if self.base_fish and fish.id == self.base_fish.id:
-                    # base fish 
-                    if fish.is_schooling:
-                        domain = [6, 10, 15, 20, 25, 30]
-                    else:
-                        domain = [1]
-                        if max_possible >= 2:
-                            domain.append(2)
+                    domain = possible_counts
                 else:
-                    if fish.is_schooling:
-                        domain = [0, 6, 10, 15, 20, 25, 30]
-                    else:
-                        domain = [0, 1]
-                        if max_possible >= 2:
-                            domain.append(2)
+                    domain = [0] + possible_counts
 
                 problem.addVariable(fish.id, domain)
+
 
             # --- CONSTRAINTY ---
 
@@ -141,22 +170,65 @@ class AquariumCSP:
 
                 max_temp_min = max(f.temp_min for f in selected)
                 min_temp_max = min(f.temp_max for f in selected)
+
                 max_ph_min = max(f.ph_min for f in selected)
                 min_ph_max = min(f.ph_max for f in selected)
 
-                ok = (max_temp_min <= min_temp_max) and (max_ph_min <= min_ph_max)
+                max_hardness_min = max(f.hardness_min for f in selected)
+                min_hardness_max = min(f.hardness_max for f in selected)        
+
+                ok = (
+                        (max_temp_min <= min_temp_max)
+                        and (max_ph_min <= min_ph_max)
+                        and (max_hardness_min <= min_hardness_max)
+                    )
 
                 if not ok:
                     log(f"[FAIL water] {[f.name for f in selected]}")
 
                 return ok
 
+            def size_constraint(*counts):
+                selected = [
+                    species_map[species_ids[i]]
+                    for i, c in enumerate(counts)
+                    if c > 0
+                ]
+
+                for i in range(len(selected)):
+                    for j in range(i + 1, len(selected)):
+
+                        f1 = selected[i]
+                        f2 = selected[j]
+
+                        larger = max(f1.adult_size, f2.adult_size)
+                        smaller = min(f1.adult_size, f2.adult_size)
+
+                        # Ochrona małych ryb przed znacznie większymi gatunkami
+                        if smaller <= 5 and larger >= smaller * 4:
+                            return False
+
+                        if larger <= 6:
+                            continue
+
+                        ratio_limit = (
+                            3
+                            if max(f1.aggression_level, f2.aggression_level) >= 3
+                            else 5
+                        )
+
+                        if larger / smaller >= ratio_limit:
+                            return False
+
+                return True
+            
             def bioload_constraint(*counts):
                 total = sum(
-                    counts[i] * species_map[species_ids[i]].adult_size
+                    counts[i] * species_map[species_ids[i]].bioload_index
                     for i in range(len(counts))
                 )
-                return total <= (self.volume / 2)
+
+                return total <= self.volume
 
             def aggression_constraint(*counts):
                 selected = [species_map[species_ids[i]]
@@ -188,6 +260,7 @@ class AquariumCSP:
                 return True
 
             problem.addConstraint(water_constraint, species_ids)
+            problem.addConstraint(size_constraint, species_ids)
             problem.addConstraint(bioload_constraint, species_ids)
             problem.addConstraint(aggression_constraint, species_ids)
             problem.addConstraint(solitary_constraint, species_ids)
@@ -225,6 +298,17 @@ class AquariumCSP:
 
         end_time = time.perf_counter()
 
+        solve_time = end_time - start_time
+
+        log_exp(
+            f"CSP_SOLVE;"
+            f"VOLUME={self.volume};"
+            f"CANDIDATES={len(self.candidates)};"
+            f"COMBINATIONS={selected_combos};"
+            f"SOLUTIONS={len(all_solutions)};"
+            f"TIME={solve_time:.6f}"
+        )
+
         log(f"Znaleziono {len(all_solutions)} rozwiązań w {end_time - start_time:.2f}s")
 
-        return all_solutions, (end_time - start_time)
+        return all_solutions, solve_time

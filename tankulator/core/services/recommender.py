@@ -34,6 +34,8 @@ class RecommenderService:
         )
 
         candidates, prep_time = engine.get_filtered_candidates()
+        
+        print("KANDYDACI:", len(candidates))
 
         # --- 2. CSP ---
         csp = AquariumCSP(

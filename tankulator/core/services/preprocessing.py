@@ -2,7 +2,7 @@ import time
 import copy
 from constraint import Problem
 from ..models import FishSpecies
-import logging
+from .experiment_logger import log_exp
 
 # --- PREPROCESSING ---
 
@@ -35,9 +35,18 @@ class AquariumEngine:
             candidates = candidates.filter(min_tank_volume__lte=self.volume)
 
             if self.temp:
-                candidates = candidates.filter(temp_min__lte=self.temp, temp_max__gte=self.temp)
+                candidates = candidates.filter(
+                    temp_min__lte=self.temp, 
+                    temp_max__gte=self.temp)
             if self.ph:
-                candidates = candidates.filter(ph_min__lte=self.ph, ph_max__gte=self.ph)
+                candidates = candidates.filter(
+                    ph_min__lte=self.ph, 
+                    ph_max__gte=self.ph)
+            if self.hardness:
+                candidates = candidates.filter(
+                    hardness_min__lte=self.hardness,
+                    hardness_max__gte=self.hardness
+    )
 
             candidates = list(candidates)
 
@@ -47,7 +56,8 @@ class AquariumEngine:
             final_candidates = []
             for f in candidates:
                 min_qty = 6 if f.is_schooling else 1
-                if (f.adult_size * min_qty) <= (self.volume / 2):
+
+                if (f.bioload_index * min_qty) <= self.volume * 1.5:
                     final_candidates.append(f)
 
             if self.base_fish:
@@ -58,14 +68,14 @@ class AquariumEngine:
                     final_candidates,
                     key=lambda f: self.compatibility_score(self.base_fish, f),
                     reverse=True
-                )[:30]
+                )[:300]
 
                 if len(final_candidates) < 5:
                     final_candidates = sorted(
                         candidates,
                         key=lambda f: self.compatibility_score(self.base_fish, f),
                         reverse=True
-                    )[:20]
+                    )[:200]
 
             else:
                 if len(final_candidates) > 50:
@@ -73,11 +83,17 @@ class AquariumEngine:
                     final_candidates = sorted(
                         final_candidates,
                         key=lambda f: abs(((f.ph_min + f.ph_max) / 2) - target_ph)
-                    )[:50]
+                    )[:100]
 
         if self.base_fish:
             if self.base_fish.id not in [f.id for f in final_candidates]:
                 final_candidates.append(self.base_fish)
 
         end_time = time.perf_counter()
+        log_exp(
+            f"PREPROCESS;"
+            f"VOLUME={self.volume};"
+            f"CANDIDATES={len(final_candidates)};"
+            f"TIME={end_time-start_time:.6f}"
+        )
         return final_candidates, (end_time - start_time)

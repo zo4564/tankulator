@@ -1,35 +1,190 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container py-4">
-    <h2 class="mb-4 text-center">Konfigurator Obsady</h2>
-    
-    {% include "core/partials/form.html" %}
 
-    {% if ranking %}
-        <div class="row">
-            <div class="col-12 mb-3 d-flex justify-content-between align-items-center">
-                <h4>Sugerowane zestawy ({{ ranking|length }}):</h4>
-                <span class="text-muted small">Czas obliczeń: {{ process_time }}s</span>
+<div class="container py-4">
+
+<h2 class="mb-4 text-center">
+    Konfigurator obsady akwarium słodkowodnego
+</h2>
+
+<!-- PRESETY -->
+    <div class="card shadow-sm border-0 mb-4">
+        
+        <div class="card-body">
+            <p>Presety dla parametrów środowiskowych</p>
+            <div class="d-flex flex-wrap gap-2">
+
+                <button type="button"
+                        class="btn btn-primary preset-btn"
+                        data-volume="60"
+                        data-temp="25"
+                        data-ph="7"
+                        data-hardness="8">
+                    Akwarium ogólne 60L
+                </button>
+
+                <button type="button"
+                        class="btn btn-success preset-btn"
+                        data-volume="112"
+                        data-temp="26"
+                        data-ph="6.8"
+                        data-hardness="5">
+                    Ameryka 112L
+                </button>
+
+                <button type="button"
+                        class="btn btn-warning preset-btn"
+                        data-volume="240"
+                        data-temp="25"
+                        data-ph="8.3"
+                        data-hardness="15">
+                    Malawi / Tanganika 240L
+                </button>   
+
+                <button type="button"
+                        class="btn btn-info preset-btn"
+                        data-volume="160"
+                        data-temp="17"
+                        data-ph="7.2"
+                        data-hardness="10">
+                    Chłodne wody 160L
+                </button>
+
+                <button type="button"
+                        id="clearFiltersBtn"
+                        class="btn btn-outline-danger ms-auto">
+                    Wyczyść filtry
+                </button>
+
             </div>
-            
-            {% for item in ranking|slice:":12" %}
-                {% include "core/partials/card_obsada.html" with res=item %}
-            {% endfor %}
+
         </div>
-    {% elif query_params.volume %}
-        <div class="alert alert-warning shadow-sm">
-            Brak wyników dla podanych parametrów. Spróbuj zmienić pH lub temperaturę.
+    </div>
+
+{% include "core/partials/form.html" %}
+
+{% if ranking_groups %}
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+
+        <h4>
+            Sugerowane zestawy ({{ ranking_groups|length }})
+        </h4>
+
+        <span class="text-muted small">
+            Czas obliczeń: {{ process_time }}s
+        </span>
+
+    </div>
+
+    <div class="row">
+
+        {% for group in ranking_groups|slice:":12" %}
+
+        <div class="col-12 col-md-6 col-xl-4 mb-4">
+
+            <div class="card shadow-sm border-0 h-100">
+
+                <div class="card-header bg-white">
+
+                    <small class="text-muted">
+
+                        {{ group.variants|length }}
+                        wariantów
+
+                        •
+
+                        najlepszy wynik:
+                        {{ group.best_score }} pkt
+
+                    </small>
+
+                </div>
+
+                <div class="card-body">
+
+                    <div
+                        id="carousel{{ forloop.counter }}"
+                        class="carousel slide"
+                        data-bs-interval="false"
+                    >
+
+                        <div class="carousel-inner">
+
+                            {% for item in group.variants %}
+
+                            <div class="carousel-item {% if forloop.first %}active{% endif %}">
+
+                                {% include "core/partials/card_obsada.html" with res=item embedded=True %}
+
+                            </div>
+
+                            {% endfor %}
+
+                        </div>
+
+                        {% if group.variants|length > 1 %}
+
+                        <div class="d-flex justify-content-center align-items-center gap-2 mt-3">
+
+                            <button
+                                class="btn btn-outline-secondary btn-sm"
+                                type="button"
+                                data-bs-target="#carousel{{ forloop.counter }}"
+                                data-bs-slide="prev"
+                            >
+                                ←
+                            </button>
+
+                            <span class="small text-muted">
+                                {{ group.variants|length }} wariantów
+                            </span>
+
+                            <button
+                                class="btn btn-outline-secondary btn-sm"
+                                type="button"
+                                data-bs-target="#carousel{{ forloop.counter }}"
+                                data-bs-slide="next"
+                            >
+                                →
+                            </button>
+
+                        </div>
+
+                        {% endif %}
+
+                    </div>
+
+                </div>
+
+            </div>
+
         </div>
-    {% endif %}
+
+        {% endfor %}
+
+    </div>
+
+{% elif query_params.volume %}
+
+    <div class="alert alert-warning shadow-sm">
+        Brak wyników dla podanych parametrów.
+        Spróbuj zmienić pH lub temperaturę.
+    </div>
+
+{% endif %}
+
 </div>
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
+
     const fishSelect = document.getElementById("fishSelect");
     const tempInput = document.getElementById("tempInput");
     const phInput = document.getElementById("phInput");
     const volumeInput = document.getElementById("volumeInput");
+    const hardnessInput = document.getElementById("hardnessInput");
 
     if (!fishSelect || !tempInput || !phInput || !volumeInput) {
         console.error("Brak elementów formularza!");
@@ -37,24 +192,31 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     fishSelect.addEventListener("change", function() {
-        const fishId = this.value;
 
-        //console.log("Wybrano rybę:", fishId);
+        const fishId = this.value;
 
         if (!fishId) return;
 
         fetch(`/fish/${fishId}/`)
             .then(response => response.json())
             .then(data => {
-                //console.log("Dane z API:", data);
 
                 if (data.error) return;
 
-                const tempAvg = (data.temp_min + data.temp_max) / 2;
-                const phAvg = (data.ph_min + data.ph_max) / 2;
+                const tempAvg =
+                    (data.temp_min + data.temp_max) / 2;
+
+                const phAvg =
+                    (data.ph_min + data.ph_max) / 2;
+
+                const hardnessAvg =
+                    Math.round(
+                        (data.hardness_min + data.hardness_max) / 2
+                    );
 
                 tempInput.value = tempAvg.toFixed(1);
                 phInput.value = phAvg.toFixed(1);
+                hardnessInput.value = hardnessAvg.toFixed(1);
 
                 tempInput.min = data.temp_min;
                 tempInput.max = data.temp_max;
@@ -62,17 +224,81 @@ document.addEventListener("DOMContentLoaded", function() {
                 phInput.min = data.ph_min;
                 phInput.max = data.ph_max;
 
-                volumeInput.min = data.volume;
-                if (volumeInput.value < data.volume) volumeInput.value = data.volume;
+                hardnessInput.min = data.hardness_min;
+                hardnessInput.max = data.hardness_max;
 
-                tempInput.title = `Zakres: ${data.temp_min} - ${data.temp_max}`;
-                phInput.title = `Zakres: ${data.ph_min} - ${data.ph_max}`;
+                volumeInput.min = data.volume;
+
+                if (volumeInput.value < data.volume) {
+                    volumeInput.value = data.volume;
+                }
+
+                tempInput.title =
+                    `Zakres: ${data.temp_min} - ${data.temp_max}`;
+
+                phInput.title =
+                    `Zakres: ${data.ph_min} - ${data.ph_max}`;
+
+                hardnessInput.title =
+                    `Zakres: ${data.hardness_min} - ${data.hardness_max}`;
             })
             .catch(error => {
                 console.error("Błąd fetch:", error);
             });
+
     });
+
 });
+
+// PRESETY
+
+    document.querySelectorAll(".preset-btn").forEach(btn => {
+
+        btn.addEventListener("click", function() {
+
+            volumeInput.value = this.dataset.volume;
+            tempInput.value = this.dataset.temp;
+            phInput.value = this.dataset.ph;
+            hardnessInput.value = this.dataset.hardness;
+            document.getElementById("fishSelect").value = "";
+
+        });
+
+    });
+
+    // CZYSZCZENIE
+
+    const clearBtn =
+        document.getElementById("clearFiltersBtn");
+
+    if (clearBtn) {
+
+        clearBtn.addEventListener("click", function() {
+
+            volumeInput.value = "100";
+            tempInput.value = "25";
+            phInput.value = "7.0";
+            hardnessInput.value = "10";
+
+            document.getElementById("fishSelect").value = "";
+
+            const profile =
+                document.querySelector("[name='profile']");
+
+            if (profile) {
+                profile.value = "community";
+            }
+
+            const biotope =
+                document.getElementById("biotopeCheck");
+
+            if (biotope) {
+                biotope.checked = false;
+            }
+
+        });
+
+    }
 </script>
 
 {% endblock %}

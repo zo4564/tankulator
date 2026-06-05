@@ -4,19 +4,19 @@
       "name": "base_fish",
       "type": "base_fish",
       "params": {
-        "bonus": 500,
+        "bonus": 50,
         "penalty": -1000
       }
     },
     {
       "name": "zone_completeness",
       "type": "zones",
-      "weight": 200
+      "weight": 5
     },
     {
       "name": "biomass_optimal",
       "type": "biomass",
-      "weight": 15,
+      "weight": 5,
       "params": {
         "min": 0.7,
         "max": 0.9
@@ -25,17 +25,30 @@
     {
       "name": "region_consistency",
       "type": "region",
-      "weight": 15
+      "weight": 5
     },
     {
       "name": "aggression",
       "type": "aggression",
-      "weight": 0
+      "weight": 5
     },
     {
       "name": "solitary",
       "type": "solitary",
-      "weight": 20
+      "weight": 5
+    },
+    {
+      "name": "diversity",
+      "type": "diversity",
+      "weight": 5,
+      "params": {
+        "optimal": 4
+      }
+    },
+    {
+      "name": "school_size",
+      "type": "school_size",
+      "weight": 5
     }
   ]
 }

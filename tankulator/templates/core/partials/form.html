@@ -5,7 +5,7 @@
             <div class="col-md-2">
                 <label class="form-label">Pojemność (L)</label>
                 <input id="volumeInput" type="number" name="volume" class="form-control"
-                       value="{{ query_params.volume|default:60 }}">
+                       value="{{ query_params.volume|default:100 }}">
             </div>
 
             <div class="col-md-2">
@@ -22,6 +22,16 @@
                        value="{{ query_params.ph|default:7.0 }}">
             </div>
 
+            <div class="col-md-2">
+                <label class="form-label">Twardość (dGH)</label>
+                <input id="hardnessInput"
+                    type="number"
+                    step="1"
+                    name="hardness"
+                    class="form-control"
+                    value="{{ query_params.hardness|default:10 }}">
+            </div>
+
             <div class="col-md-3 d-flex align-items-center justify-content-center">
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox"
@@ -31,6 +41,34 @@
                         Tylko ten sam biotop
                     </label>
                 </div>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Profil akwarium</label>
+
+                <select name="profile" class="form-select">
+
+                    <option value="community"
+                        {% if query_params.profile == "community" %}selected{% endif %}>
+                        Towarzyskie
+                    </option>
+
+                    <option value="biotope"
+                        {% if query_params.profile == "biotope" %}selected{% endif %}>
+                        Biotop
+                    </option>
+
+                    <option value="schooling"
+                        {% if query_params.profile == "schooling" %}selected{% endif %}>
+                        Duże stada
+                    </option>
+
+                    <option value="diversity"
+                        {% if query_params.profile == "diversity" %}selected{% endif %}>
+                        Różnorodność
+                    </option>
+
+                </select>
             </div>
 
             <div class="col-md-3">

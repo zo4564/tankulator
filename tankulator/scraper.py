@@ -4,6 +4,7 @@ import re
 import time
 import os
 import django
+import math
 
 # Konfiguracja Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'tankulator.settings')
@@ -94,7 +95,6 @@ def scrape():
         
         try:
             time.sleep(0.6)
-            r = requests.get(link, headers=headers, timeout=10)
             r = requests.get(link, headers=headers, timeout=10)
             s = BeautifulSoup(r.content, 'html.parser')
 
@@ -192,6 +192,7 @@ def scrape():
             else:
                 zone = "MID"
 
+            min_tank_volume = vols[0] if vols else 60
             # Zapis do bazy
             fish_data = {
                 'latin_name': latin_name,
@@ -201,8 +202,8 @@ def scrape():
                 'ph_max': phs[1] if len(phs) > 1 else 7.5,
                 'hardness_min': h_min,
                 'hardness_max': h_max,
-                'min_tank_volume': vols[0] if vols else 60,
-                'bioload_index': round(adult_size / 10.0, 2),
+                'min_tank_volume': min_tank_volume,
+                'bioload_index': math.sqrt(min_tank_volume),
                 'is_schooling': is_schooling,
                 'is_solitary': is_solitary,
                 'adult_size': adult_size,

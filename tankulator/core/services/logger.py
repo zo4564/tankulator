@@ -11,3 +11,5 @@ logging.basicConfig(
 
 def log(msg):
     logging.info(msg)
+
+

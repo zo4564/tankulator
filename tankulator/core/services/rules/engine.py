@@ -3,12 +3,17 @@ from .context import RuleContext
 from .registry import RULE_REGISTRY
 from ..logger import log
 from . import rules_impl
+from .profiles import RULE_PROFILES
 
 class RuleEngine:
-    def __init__(self, solutions, volume, base_fish_id=None, rules_path="rules.json"):
+    def __init__(self, solutions, volume, base_fish_id=None, rules_path="rules.json", profile="community"):
         self.solutions = solutions
         self.volume = volume
         self.base_fish_id = base_fish_id
+        self.profile = RULE_PROFILES.get(
+            profile,
+            RULE_PROFILES["community"]
+        )
 
         self.rules = RuleLoader(rules_path).load()
 
@@ -32,7 +37,10 @@ class RuleEngine:
 
             for rule in self.rules:
                 rule_type = rule["type"]
-                weight = rule.get("weight", 1)
+                weight = self.profile.get(
+                    rule_type,
+                    rule.get("weight", 1)
+                )
                 params = rule.get("params", {})
 
                 if rule_type not in RULE_REGISTRY:
